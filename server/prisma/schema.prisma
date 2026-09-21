@@ -1,0 +1,343 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = "file:./caresync.db"
+}
+
+model User {
+  id            String    @id @default(uuid())
+  email         String    @unique
+  passwordHash  String
+  role          String    // PATIENT, DOCTOR, ADMIN
+  firstName     String
+  lastName      String
+  phone         String?
+  avatarUrl     String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  patient       Patient?
+  doctor        Doctor?
+  notifications Notification[]
+  aiConversations AIConversation[]
+}
+
+model Patient {
+  id                String    @id @default(uuid())
+  userId            String    @unique
+  user              User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  dob               DateTime
+  gender            String    // Male, Female, Other
+  bloodGroup        String    // A+, O+, B+, AB+, A-, O-, B-, AB-
+  emergencyContact  String?
+  address           String?
+  heightCm          Float?
+  weightKg          Float?
+  allergies         String?   // Comma-separated or JSON string
+  riskLevel         String    @default("LOW") // LOW, MODERATE, HIGH, CRITICAL
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  medicalHistories  MedicalHistory[]
+  vitals            Vital[]
+  symptoms          Symptom[]
+  appointments      Appointment[]
+  queueEntries      QueueEntry[]
+  reports           Report[]
+  wellnessEntries   WellnessEntry[]
+  elderlyMonitoring ElderlyMonitoring[]
+  alerts            Alert[]
+  timelines         PatientTimeline[]
+  assignedDoctors   DoctorPatientAssignment[]
+  transfers         Transfer[]
+  aiPatientReports  AIPatientReport[]
+}
+
+model Doctor {
+  id             String    @id @default(uuid())
+  userId         String    @unique
+  user           User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  specialization String
+  licenseNumber  String    @unique
+  department     String
+  roomNumber     String?
+  availability   String    @default("AVAILABLE") // AVAILABLE, BUSY, OFF_DUTY
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  appointments      Appointment[]
+  queueEntries      QueueEntry[]
+  reports           Report[]
+  assignedPatients  DoctorPatientAssignment[]
+  aiPatientReports  AIPatientReport[]
+}
+
+model DoctorPatientAssignment {
+  id           String   @id @default(uuid())
+  doctorId     String
+  patientId    String
+  assignedDate DateTime @default(now())
+  notes        String?
+
+  doctor       Doctor   @relation(fields: [doctorId], references: [id], onDelete: Cascade)
+  patient      Patient  @relation(fields: [patientId], references: [id], onDelete: Cascade)
+
+  @@unique([doctorId, patientId])
+}
+
+model MedicalHistory {
+  id            String    @id @default(uuid())
+  patientId     String
+  patient       Patient   @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  condition     String
+  diagnosisDate DateTime
+  status        String    // ACTIVE, RESOLVED, CHRONIC, MANAGED
+  notes         String?
+  treatedBy     String?
+  createdAt     DateTime  @default(now())
+}
+
+model Vital {
+  id              String   @id @default(uuid())
+  patientId       String
+  patient         Patient  @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  recordedAt      DateTime @default(now())
+  heartRate       Int      // bpm
+  systolicBp      Int      // mmHg
+  diastolicBp     Int      // mmHg
+  temperature     Float    // Fahrenheit
+  spO2            Int      // percentage 0-100
+  respiratoryRate Int?     // breaths/min
+  recordedBy      String?  // Doctor / Device / Patient
+}
+
+model Symptom {
+  id          String   @id @default(uuid())
+  patientId   String
+  patient     Patient  @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  recordedAt  DateTime @default(now())
+  symptomName String
+  severity    String   // MILD, MODERATE, SEVERE
+  duration    String?
+  notes       String?
+}
+
+model Appointment {
+  id              String   @id @default(uuid())
+  patientId       String
+  patient         Patient  @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  doctorId        String
+  doctor          Doctor   @relation(fields: [doctorId], references: [id], onDelete: Cascade)
+  appointmentDate DateTime
+  timeSlot        String   // e.g. "10:30 AM"
+  status          String   @default("SCHEDULED") // SCHEDULED, IN_PROGRESS, COMPLETED, CANCELLED
+  type            String   @default("IN_PERSON") // IN_PERSON, VIDEO_CONSULT, FOLLOW_UP
+  reason          String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+model QueueEntry {
+  id                String   @id @default(uuid())
+  patientId         String
+  patient           Patient  @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  doctorId          String?
+  doctor            Doctor?  @relation(fields: [doctorId], references: [id], onDelete: SetNull)
+  department        String
+  tokenNumber       String   // e.g. "A-12", "B-04"
+  estimatedWaitTime Int      // in minutes
+  status            String   @default("WAITING") // WAITING, CALLED, IN_CONSULTATION, COMPLETED, NO_SHOW
+  priority          String   @default("NORMAL")  // NORMAL, URGENT, EMERGENCY
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+}
+
+model Report {
+  id                String   @id @default(uuid())
+  patientId         String
+  patient           Patient  @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  doctorId          String?
+  doctor            Doctor?  @relation(fields: [doctorId], references: [id], onDelete: SetNull)
+  reportType        String   // Blood Test, Urine Test, X-Ray, CT Scan, MRI, Ultrasound, ECG, Prescription, Discharge Summary, Medical Certificate, Vaccination Record, Lab Report, Radiology Report, Doctor Consultation, Other
+  title             String
+  description       String?
+  fileName          String
+  filePath          String
+  fileType          String   // pdf, png, jpg, etc.
+  uploadDate        DateTime @default(now())
+  createdBy         String   // User id or system tag
+  status            String   @default("COMPLETED") // PENDING, PROCESSING, COMPLETED, VERIFIED
+  aiSummary         String?
+  extractedText     String?
+  extractedData     String?  // JSON structured OCR & AI analysis (values, reference ranges, flags, doctor questions)
+  visibility        String   @default("NORMAL") // NORMAL, CONFIDENTIAL, RESTRICTED
+  sharedWithDoctor  Boolean  @default(true)
+  sharedWithPatient Boolean  @default(true)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  files             ReportFile[]
+}
+
+model ReportFile {
+  id        String   @id @default(uuid())
+  reportId  String
+  report    Report   @relation(fields: [reportId], references: [id], onDelete: Cascade)
+  fileUrl   String
+  fileSize  Int
+  mimeType  String
+  checksum  String?
+  createdAt DateTime @default(now())
+}
+
+model AIConversation {
+  id        String      @id @default(uuid())
+  userId    String
+  user      User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title     String
+  startedAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+
+  messages  AIMessage[]
+}
+
+model AIMessage {
+  id             String         @id @default(uuid())
+  conversationId String
+  conversation   AIConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  sender         String         // USER, ASSISTANT, SYSTEM
+  content        String
+  timestamp      DateTime       @default(now())
+  metadata       String?        // JSON string with references, citations
+}
+
+model WellnessEntry {
+  id                 String   @id @default(uuid())
+  patientId          String
+  patient            Patient  @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  date               DateTime @default(now())
+  moodScore          Int      // 1 to 10
+  sleepHours         Float    // hours
+  stressLevel        String   // LOW, MODERATE, HIGH
+  waterIntakeLiters  Float    // liters
+  activityMinutes    Int      // minutes
+  notes              String?
+}
+
+model ElderlyMonitoring {
+  id                 String   @id @default(uuid())
+  patientId          String
+  patient            Patient  @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  fallDetected       Boolean  @default(false)
+  mobilityScore      Int      // 0 to 100
+  medicationTaken    Boolean  @default(true)
+  lastCheckIn        DateTime @default(now())
+  caregiverAlertSent Boolean  @default(false)
+  notes              String?
+}
+
+model Alert {
+  id             String    @id @default(uuid())
+  patientId      String
+  patient        Patient   @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  severity       String    // CRITICAL, HIGH, MEDIUM, LOW
+  title          String
+  message        String
+  status         String    @default("ACTIVE") // ACTIVE, ACKNOWLEDGED, RESOLVED
+  createdAt      DateTime  @default(now())
+  acknowledgedAt DateTime?
+  acknowledgedBy String?
+}
+
+model Notification {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title     String
+  message   String
+  type      String   // APPOINTMENT, REPORT, ALERT, REMINDER, SYSTEM, TRANSFER
+  isRead    Boolean  @default(false)
+  linkUrl   String?
+  createdAt DateTime @default(now())
+}
+
+model PatientTimeline {
+  id          String   @id @default(uuid())
+  patientId   String
+  patient     Patient  @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  eventDate   DateTime @default(now())
+  eventType   String   // DIAGNOSIS, SURGERY, PRESCRIPTION, LAB_TEST, ADMISSION, DISCHARGE, TRANSFER
+  title       String
+  description String
+  icon        String?
+}
+
+model Transfer {
+  id           String   @id @default(uuid())
+  patientId    String
+  patient      Patient  @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  senderRole   String   // PATIENT, DOCTOR, SPECIALIST, HOSPITAL
+  senderId     String?
+  senderName   String
+  receiverRole String   // DOCTOR, SPECIALIST, PATIENT, HOSPITAL
+  receiverId   String?
+  receiverName String
+  reason       String
+  sharedItems  String   // JSON array of item types or descriptions
+  status       String   @default("COMPLETED") // PENDING, ACCEPTED, REVIEWED, COMPLETED
+  notes        String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+model AuditLog {
+  id         String   @id @default(uuid())
+  userId     String?
+  userName   String
+  userRole   String
+  action     String   // UPLOAD, VIEW, DOWNLOAD, SHARE, TRANSFER, MODIFY, REVIEW, FINALIZE
+  entityType String   // REPORT, PATIENT_RECORD, TRANSFER, AI_REPORT, QUEUE, ELDERLY
+  entityId   String?
+  details    String
+  ipAddress  String?
+  createdAt  DateTime @default(now())
+}
+
+model AIPatientReport {
+  id                  String    @id @default(uuid())
+  patientId           String
+  patient             Patient   @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  doctorId            String?
+  doctor              Doctor?   @relation(fields: [doctorId], references: [id], onDelete: SetNull)
+  status              String    @default("AWAITING_REVIEW") // DRAFT, AWAITING_REVIEW, FINALIZED
+  reportTitle         String    @default("Comprehensive AI Patient Clinical Report")
+  patientInfo         String?   // Section 1: Patient Information
+  chiefComplaint      String?   // Section 2: Chief Complaint
+  symptoms            String?
+  medicalHistory      String?
+  allergies           String?
+  medications         String?
+  familyHistory       String?
+  lifestyle           String?
+  vitals              String?
+  uploadedReports     String?
+  aiSummaries         String?
+  riskScreening       String?
+  mentalWellness      String?
+  elderlyCare         String?
+  timeline            String?
+  aiOverallSummary    String?
+  questionsForDoctor  String?
+  doctorNotes         String?
+  finalClinicalReview String?
+  reviewedBy          String?
+  reviewedAt          DateTime?
+  finalizedBy         String?
+  finalizedAt         DateTime?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+}
+
